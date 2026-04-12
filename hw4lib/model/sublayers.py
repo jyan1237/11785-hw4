@@ -41,7 +41,7 @@ class SelfAttentionLayer(nn.Module):
         '''
         super().__init__()
         self.mha = nn.MultiheadAttention(d_model, num_heads, batch_first=True)
-        self.norm = nn.LayerNorm(d_model, eps=1e-6)
+        self.norm = nn.LayerNorm(d_model)
         self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, x: torch.Tensor, key_padding_mask: Optional[torch.Tensor] = None, attn_mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -91,7 +91,7 @@ class CrossAttentionLayer(nn.Module):
         '''
         super().__init__()
         self.mha = nn.MultiheadAttention(d_model, num_heads, batch_first=True)
-        self.norm = nn.LayerNorm(d_model, eps=1e-6)
+        self.norm = nn.LayerNorm(d_model)
         self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, x: torch.Tensor, y: torch.Tensor, key_padding_mask: Optional[torch.Tensor] = None, attn_mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -149,10 +149,14 @@ class FeedForwardLayer(nn.Module):
             dropout (float): The dropout rate.
         '''
         super().__init__()
-        self.ffn = NotImplementedError
-        self.norm = NotImplementedError
-        self.dropout = NotImplementedError
-        raise NotImplementedError
+        self.ffn = nn.Sequential(
+            nn.Linear(d_model, d_ff),
+            nn.GELU(),
+            nn.Dropout(p=dropout),
+            nn.Linear(d_ff, d_model)
+        )
+        self.norm = nn.LayerNorm(d_ff)
+        self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         '''
@@ -163,6 +167,11 @@ class FeedForwardLayer(nn.Module):
         Returns:
             x (torch.Tensor): Output tensor, shape (batch_size, seq_len, d_model)
         '''
-        x = NotImplementedError
-        raise NotImplementedError
+        input = x
+        x = self.norm(x)
+        x = self.ffn(x)
+        x = self.dropout(x)
+        x += input
+        
+        return x
     
