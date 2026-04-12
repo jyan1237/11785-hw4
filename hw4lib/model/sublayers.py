@@ -3,7 +3,7 @@ import torch
 from typing import Tuple, Optional
 
 '''
-TODO: Implement these Modules.
+Implement these Modules.
 
 The file contains three key sublayers used in transformer decoders:
 1. SelfAttentionLayer: For masked self-attention
@@ -172,6 +172,6 @@ class FeedForwardLayer(nn.Module):
         x = self.ffn(x)
         x = self.dropout(x)
         x += input
-        
+
         return x
     
