@@ -90,10 +90,9 @@ class CrossAttentionLayer(nn.Module):
             dropout (float): The dropout rate.
         '''
         super().__init__()
-        self.mha = NotImplementedError
-        self.norm = NotImplementedError
-        self.dropout = NotImplementedError
-        raise NotImplementedError
+        self.mha = nn.MultiheadAttention(d_model, num_heads, batch_first=True)
+        self.norm = nn.LayerNorm(d_model, eps=1e-6)
+        self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, x: torch.Tensor, y: torch.Tensor, key_padding_mask: Optional[torch.Tensor] = None, attn_mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         '''
@@ -108,8 +107,17 @@ class CrossAttentionLayer(nn.Module):
             x (torch.Tensor): Output tensor, shape (batch_size, seq_len, d_model)
             mha_attn_weights (torch.Tensor): Attention weights, shape (batch_size, seq_len, seq_len)   
         '''
-        x, mha_attn_weights = NotImplementedError, NotImplementedError
-        raise NotImplementedError
+        input = x
+        x = self.norm(x)
+        
+        q = x
+        k = v = x
+        x, mha_attn_weights = self.mha(q, k, v, key_padding_mask = key_padding_mask, attn_mask=attn_mask)
+        
+        x = self.dropout(x)
+        x += input
+
+        return x, mha_attn_weights
     
 ## -------------------------------------------------------------------------------------------------  
 class FeedForwardLayer(nn.Module):
