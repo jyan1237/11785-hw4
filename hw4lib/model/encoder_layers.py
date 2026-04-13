@@ -4,7 +4,7 @@ from typing import Tuple, Optional
 from .sublayers import SelfAttentionLayer, FeedForwardLayer
 
 '''
-TODO: Implement this Module.
+Implement this Module.
 
 This file contains the encoder layer implementation used in transformer architectures:
 

@@ -4,7 +4,7 @@ from typing import Tuple, Optional
 from .sublayers import SelfAttentionLayer, CrossAttentionLayer, FeedForwardLayer
 
 '''
-TODO: Implement these Modules.
+Implement these Modules.
 
 This file contains two key decoder layer implementations used in transformer architectures:
 
