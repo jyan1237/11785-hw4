@@ -9,7 +9,7 @@ import torchaudio.transforms as tat
 from .tokenizer import H4Tokenizer
 
 '''
-TODO: Implement this class.
+Implement this class.
 
 Specification:
 The ASRDataset class provides data loading and processing for ASR (Automatic Speech Recognition):
@@ -186,8 +186,12 @@ class ASRDataset(Dataset):
                 self.text_max_len = max(self.text_max_len, len(tokenized)+1)
                 
                 # Create shifted and golden versions by adding sos and eos tokens   
-                self.shifted = [self.sos_token] + tokenized
-                self.golden = tokenized + [self.eos_token]
+                transcript_shifted = [self.sos_token] + tokenized
+                transcript_golden = tokenized + [self.eos_token]
+
+                self.transcripts_shifted.append(transcript_shifted)
+                self.transcripts_golden.append(transcript_golden)
+
 
         # Calculate average characters per token
         # DO NOT MODIFY 
@@ -233,7 +237,8 @@ class ASRDataset(Dataset):
         # Implement __len__
         return self.length
 
-    def __getitem__(self, idx) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    # Note modified output type to allow for type None for shifted_transcript and golden_transcript
+    def __getitem__(self, idx) -> Tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
         """
         Get a single sample from the dataset.
 
@@ -246,11 +251,10 @@ class ASRDataset(Dataset):
                 - shifted_transcript: LongTensor (time) or None
                 - golden_transcript: LongTensor  (time) or None
         """
-        # TODO: Load features
-        feat = NotImplementedError
-        raise NotImplementedError
+        # Load features
+        feat = self.feats[idx]
 
-        # TODO: Apply normalization
+        # Apply normalization
         if self.config['norm'] == 'global_mvn':
             assert self.global_mean is not None and self.global_std is not None, "Global mean and std must be computed before normalization"
             feat = (feat - self.global_mean.unsqueeze(1)) / (self.global_std.unsqueeze(1) + 1e-8)
@@ -259,16 +263,17 @@ class ASRDataset(Dataset):
         elif self.config['norm'] == 'none':
             pass
         
-        # TODO: Get transcripts for non-test partitions
+        # Get transcripts for non-test partitions
         shifted_transcript, golden_transcript = None, None
         if self.partition != "test-clean":
-            # TODO: Get transcripts for non-test partitions
-            shifted_transcript = NotImplementedError
-            golden_transcript  = NotImplementedError
+            # Get transcripts for non-test partitions
+            shifted_transcript = self.transcripts_shifted[idx]
+            golden_transcript  = self.transcripts_golden[idx]
 
-        raise NotImplementedError # Remove once implemented
+        return feat, shifted_transcript, golden_transcript
 
-    def collate_fn(self, batch) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    # changed data types of output to match documentation (Now allows None)
+    def collate_fn(self, batch) -> Tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None, torch.Tensor, torch.Tensor | None]:
         """
         Collate and pad a batch of samples to create a batch of fixed-length padded features and transcripts.
 
@@ -283,49 +288,49 @@ class ASRDataset(Dataset):
                 - feat_lengths: Tensor of original feature lengths of shape (batch)
                 - transcript_lengths: Tensor of transcript lengths of shape (batch) or None
         """
-        # TODO: Implement collate_fn
+        # Implement collate_fn
 
-        # TODO: Collect transposed features from the batch into a list of tensors (B x T x F)
-        batch_feats  = NotImplementedError
+        # Collect transposed features from the batch into a list of tensors (B x T x F)
+        batch_feats  = [data[0].T for data in batch]
 
-        # TODO: Collect feature lengths from the batch into a tensor
-        feat_lengths = NotImplementedError # B
+        # Collect feature lengths from the batch into a tensor
+        feat_lengths = torch.tensor([feats.shape[0] for feats in batch_feats]) # B
 
-        # TODO: Pad features to create a batch of fixed-length padded features
-        padded_feats = NotImplementedError # B x T x F
+        # Pad features to create a batch of fixed-length padded features
+        padded_feats = pad_sequence(batch_feats, batch_first=True) # B x T x F
 
-        # TODO: Handle transcripts for non-test partitions
+        # Handle transcripts for non-test partitions
         padded_shifted, padded_golden, transcript_lengths = None, None, None
         if self.partition != "test-clean":
-            # TODO: Collect shifted and golden transcripts from the batch into a list of tensors (B x T)  
-            batch_shifted      = NotImplementedError # B x T
-            batch_golden       = NotImplementedError # B x T
+            # Collect shifted and golden transcripts from the batch into a list of tensors (B x T)  
+            batch_shifted      = [data[1].T for data in batch] # B x T
+            batch_golden       = [data[2].T for data in batch] # B x T
 
-            # TODO: Collect transcript lengths from the batch into a tensor
-            transcript_lengths = NotImplementedError # B  
+            # Collect transcript lengths from the batch into a tensor
+            transcript_lengths = torch.tensor([shifted.shape[0] for shifted in batch_shifted]) # B  
 
-            # TODO: Pad transcripts to create a batch of fixed-length padded transcripts
-            padded_shifted     = NotImplementedError # B x T
-            padded_golden      = NotImplementedError # B x T
+            # Pad transcripts to create a batch of fixed-length padded transcripts
+            padded_shifted     = pad_sequence(batch_shifted, batch_first=True) # B x T
+            padded_golden      = pad_sequence(batch_golden, batch_first=True) # B x T
 
-        # TODO: Apply SpecAugment for training
+        # Apply SpecAugment for training
         if self.config["specaug"] and self.isTrainPartition:
-            # TODO: Permute the features to (B x F x T)
-            padded_feats = NotImplementedError # B x F x T
+            # Permute the features to (B x F x T)
+            padded_feats = padded_feats.transpose(1,2) # B x F x T
 
-            # TODO: Apply frequency masking
+            # Apply frequency masking
             if self.config["specaug_conf"]["apply_freq_mask"]:
                 for _ in range(self.config["specaug_conf"]["num_freq_mask"]):
-                    padded_feats = NotImplementedError
+                    padded_feats = self.freq_mask(padded_feats)
 
-            # TODO: Apply time masking
+            # Apply time masking
             if self.config["specaug_conf"]["apply_time_mask"]:
                 for _ in range(self.config["specaug_conf"]["num_time_mask"]):
-                    padded_feats = NotImplementedError
+                    padded_feats = self.time_mask(padded_feats)
 
-            # TODO: Permute the features back to (B x T x F)
-            padded_feats = NotImplementedError # B x T x F
+            # Permute the features back to (B x T x F)
+            padded_feats = padded_feats.transpose(1,2) # B x T x F
 
-        # TODO: Return the padded features, padded shifted, padded golden, feature lengths, and transcript lengths
-        raise NotImplementedError # Remove once implemented
+        # Return the padded features, padded shifted, padded golden, feature lengths, and transcript lengths
+        return padded_feats, padded_shifted, padded_golden, feat_lengths, transcript_lengths
 
