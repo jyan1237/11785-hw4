@@ -72,8 +72,7 @@ class ASRDataset(Dataset):
                                           Should only be None for training set.
                                           Should be provided for dev and test sets.
         """
-        # TODO: Implement __init__
-        raise NotImplementedError # Remove once implemented
+        # Implement __init__
     
         # Store basic configuration
         self.config    = config
@@ -81,36 +80,36 @@ class ASRDataset(Dataset):
         self.isTrainPartition = isTrainPartition
         self.tokenizer = tokenizer
 
-        # TODO: Get tokenizer ids for special tokens (eos, sos, pad)
-        self.eos_token = NotImplementedError
-        self.sos_token = NotImplementedError
-        self.pad_token = NotImplementedError
+        # Get tokenizer ids for special tokens (eos, sos, pad)
+        self.eos_token = tokenizer.eos_id
+        self.sos_token = tokenizer.sos_id
+        self.pad_token = tokenizer.pad_id
 
         # Set up data paths 
-        # TODO: Use root and partition to get the feature directory
-        self.fbank_dir   = NotImplementedError
+        # Use root and partition to get the feature directory
+        self.fbank_dir   = os.path.join(config['data']['root'], partition, 'fbank')
         
-        # TODO: Get all feature files in the feature directory in sorted order  
-        self.fbank_files = NotImplementedError
+        # Get all feature files in the feature directory in sorted order  
+        self.fbank_files = sorted(os.listdir(self.fbank_dir))
         
-        # TODO: Take subset
-        subset_size      = NotImplementedError
-        self.fbank_files = NotImplementedError
+        # Take subset
+        subset_size      = int(config['data']['subset'] * len(self.fbank_files))
+        self.fbank_files = self.fbank_files[:subset_size]
         
-        # TODO: Get the number of samples in the dataset  
-        self.length      = NotImplementedError
+        # Get the number of samples in the dataset  
+        self.length      = len(self.fbank_files)
 
         # Case on partition.
-        # Why will test-clean need to be handled differently?
+        # Why will test-clean need to be handled differently? -> doesn't have text
         if self.partition != "test-clean":
-            # TODO: Use root and partition to get the text directory
-            self.text_dir   = NotImplementedError
+            # Use root and partition to get the text directory
+            self.text_dir   = os.path.join(config['data']['root'], partition, 'text')
 
-            # TODO: Get all text files in the text directory in sorted order  
-            self.text_files = NotImplementedError
+            # Get all text files in the text directory in sorted order  
+            self.text_files = sorted(os.listdir(self.text_dir))
             
-            # TODO: Take subset
-            self.text_files = NotImplementedError
+            # Take subset
+            self.text_files = self.text_files[:subset_size]
             
             # Verify data alignment
             if len(self.fbank_files) != len(self.text_files):
@@ -140,12 +139,12 @@ class ASRDataset(Dataset):
 
         print(f"Loading data for {partition} partition...")
         for i in tqdm(range(self.length)):
-            # TODO: Load features
+            # Load features
             # Features are of shape (num_feats, time)
-            feat = NotImplementedError
+            feat = np.load(self.fbank_dir + self.fbank_files[i])
 
-            # TODO: Truncate features to num_feats set by you in the config
-            feat = NotImplementedError
+            # Truncate features to num_feats set by you in the config
+            feat = feat[:config['num_feats']]
 
             # Append to self.feats (num_feats is set by you in the config)
             self.feats.append(feat)
@@ -157,26 +156,26 @@ class ASRDataset(Dataset):
             if self.config['norm'] == 'global_mvn' and global_stats is None:
                 feat_tensor = torch.FloatTensor(feat)  # (num_feats, time)
                 batch_count = feat_tensor.shape[1]     # number of time steps
-                count += batch_count
+                count += batch_count # type: ignore
                 
                 # Update mean and M2 for all time steps at once
-                delta = feat_tensor - mean.unsqueeze(1)  # (num_feats, time)
-                mean += delta.mean(dim=1)                # (num_feats,)
+                delta = feat_tensor - mean.unsqueeze(1)  # type: ignore # (num_feats, time)
+                mean += delta.mean(dim=1)                # type: ignore # (num_feats,)
                 delta2 = feat_tensor - mean.unsqueeze(1) # (num_feats, time)
-                M2 += (delta * delta2).sum(dim=1)        # (num_feats,)
+                M2 += (delta * delta2).sum(dim=1)        # type: ignore # (num_feats,)
 
             # NOTE: The following steps are almost the same as the steps in the LMDataset   
             
             if self.partition != "test-clean":
-                # TODO: Load the transcript
+                # Load the transcript
                 # Important Note: This is a very important line of code and you should check whether your transcript is correct after loading (and very dependent in evaluation)
-                transcript = NotImplementedError
+                transcript = np.load(self.text_dir + self.text_files[i])
 
-                # TODO: Track character count (before tokenization)
+                # Track character count (before tokenization)
                 self.total_chars += len(transcript)
 
-                # TODO: Use tokenizer to encode the transcript (see tokenizer.encode for details)
-                tokenized = NotImplementedError
+                # Use tokenizer to encode the transcript (see tokenizer.encode for details)
+                tokenized = self.tokenizer.encode(transcript)
 
                 # Track token count (excluding special tokens)
                 # DO NOT MODIFY
@@ -186,8 +185,9 @@ class ASRDataset(Dataset):
                 # DO NOT MODIFY
                 self.text_max_len = max(self.text_max_len, len(tokenized)+1)
                 
-                # TODO: Create shifted and golden versions by adding sos and eos tokens   
-
+                # Create shifted and golden versions by adding sos and eos tokens   
+                self.shifted = [self.sos_token] + tokenized
+                self.golden = tokenized + [self.eos_token]
 
         # Calculate average characters per token
         # DO NOT MODIFY 
@@ -204,9 +204,9 @@ class ASRDataset(Dataset):
                 self.global_mean, self.global_std = global_stats
             else:
                 # Compute variance and standard deviation
-                variance = M2/(count - 1)
-                self.global_std = torch.sqrt(variance + 1e-8).float()
-                self.global_mean = mean.float()
+                variance = M2/(count - 1) # type: ignore
+                self.global_std = torch.sqrt(variance + 1e-8).float() # type: ignore
+                self.global_mean = mean.float() # type: ignore
 
         # Initialize SpecAugment transforms
         self.time_mask = tat.TimeMasking(
@@ -230,8 +230,8 @@ class ASRDataset(Dataset):
         Return the number of samples in the dataset.
         DO NOT MODIFY
         """
-        # TODO: Implement __len__
-        raise NotImplementedError
+        # Implement __len__
+        return self.length
 
     def __getitem__(self, idx) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
