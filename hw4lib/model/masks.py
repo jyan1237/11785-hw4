@@ -1,7 +1,7 @@
 import torch
 
 ''' 
-TODO: Implement this function.
+Implement this function.
 
 Specification:
 - Function should create a padding mask that identifies padded positions in the input
@@ -23,11 +23,16 @@ def PadMask(padded_input, input_lengths):
     Returns:
         Boolean mask tensor with shape (N, T).
     """
-    # TODO: Implement PadMask
-    raise NotImplementedError # Remove once implemented
+    # Implement PadMask
+    _, time, *_ = padded_input.shape
+
+    mask = input_lengths.unsqueeze(1) <= torch.arange(time, device=padded_input.device)
+
+    return mask
+
 
 ''' 
-TODO: Implement this function.
+Implement this function.
 
 Specification:
 - Function should create a causal mask for self-attention
@@ -46,5 +51,11 @@ def CausalMask(padded_input):
     Returns:
         Boolean mask tensor with shape (T, T).
     """
-    raise NotImplementedError
+    # implement Causal Mask
+    time = padded_input.shape[1]
+    triangle = torch.triu(torch.ones(time, time, device=padded_input.device), diagonal=1)
+    mask = triangle > 0
+
+    return mask
+
 
