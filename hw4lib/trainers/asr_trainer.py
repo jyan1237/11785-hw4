@@ -95,7 +95,7 @@ class ASRTrainer(BaseTrainer):
         running_att = None  # Initialize running_att here
 
         # Only zero gradients when starting a new accumulation cycle
-        self.optimizer.zero_grad()
+        self.optimizer.zero_grad() # type: ignore
 
         for i, batch in enumerate(dataloader):
             # Unpack batch and move to device
@@ -105,15 +105,15 @@ class ASRTrainer(BaseTrainer):
                 # Get raw predictions and attention weights and ctc inputs from model
                 seq_out, curr_att, ctc_inputs = self.model(feats, targets_shifted, feat_lengths, transcript_lengths)
                 
-                # Update running_att with the latest attention weights
+                # Update running_att with the latest attention weights (TODO: maybe wrong)
                 running_att = curr_att
                 
                 # Calculate CE loss
                 ce_loss = self.ce_criterion(seq_out, targets_shifted)
                 
-                # TODO: Calculate CTC loss if needed
+                # Calculate CTC loss if needed
                 if self.ctc_weight > 0:
-                    ctc_loss = NotImplementedError
+                    ctc_loss = self.ctc_criterion(ctc_inputs['log_probs'], targets_golden, ctc_inputs['lengths'], transcript_lengths) # type: ignore
                     loss = ce_loss + self.ctc_weight * ctc_loss
                 else:
                     ctc_loss = torch.tensor(0.0)
@@ -130,16 +130,16 @@ class ASRTrainer(BaseTrainer):
             # Normalize loss by accumulation steps
             loss = loss / self.config['training']['gradient_accumulation_steps']
 
-            # TODO: Backpropagate the loss
-            self.scaler = NotImplementedError
+            # Backpropagate the loss
+            self.scaler = torch.cuda.amp.GradScaler()
 
             # Only update weights after accumulating enough gradients
             if (i + 1) % self.config['training']['gradient_accumulation_steps'] == 0:
-                self.scaler.step(self.optimizer)
+                self.scaler.step(self.optimizer) # type: ignore
                 if not isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
-                    self.scheduler.step()
+                    self.scheduler.step() # type: ignore
                 self.scaler.update()
-                self.optimizer.zero_grad()
+                self.optimizer.zero_grad() # type: ignore
 
             # Update progress bar
             avg_ce_loss = running_ce_loss / total_tokens
@@ -163,11 +163,11 @@ class ASRTrainer(BaseTrainer):
 
         # Handle remaining gradients
         if (len(dataloader) % self.config['training']['gradient_accumulation_steps']) != 0:
-            self.scaler.step(self.optimizer)
+            self.scaler.step(self.optimizer) # type: ignore
             if not isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
-                self.scheduler.step()
-            self.scaler.update()
-            self.optimizer.zero_grad()
+                self.scheduler.step() # type: ignore
+            self.scaler.update() 
+            self.optimizer.zero_grad() # type: ignore
 
         # Compute final metrics
         avg_ce_loss = running_ce_loss / total_tokens
@@ -195,7 +195,87 @@ class ASRTrainer(BaseTrainer):
             Tuple[Dict[str, float], List[Dict[str, Any]]]: Validation metrics and recognition results
         """
         # TODO: In-fill the _validate_epoch method
-        raise NotImplementedError # Remove once implemented
+    
+        # Initialize training variables
+        self.model.eval()
+        batch_bar = tqdm(total=len(dataloader), dynamic_ncols=True, leave=False, position=0, desc="[Training ASR]")
+        running_ce_loss = 0.0
+        running_ctc_loss = 0.0
+        running_joint_loss = 0.0
+        total_tokens = 0
+        running_att = None  # Initialize running_att here
+
+        # Only zero gradients when starting a new accumulation cycle
+        self.optimizer.zero_grad() # type: ignore
+
+        for i, batch in enumerate(dataloader):
+            # Unpack batch and move to device
+            feats, targets_shifted, targets_golden, feat_lengths, transcript_lengths = batch
+
+            with torch.autocast(device_type=self.device, dtype=torch.float16):
+                # Get raw predictions and attention weights and ctc inputs from model
+                seq_out, curr_att, ctc_inputs = self.model(feats, targets_shifted, feat_lengths, transcript_lengths)
+                
+                # Update running_att with the latest attention weights (TODO: maybe wrong)
+                running_att = curr_att
+                
+                # Calculate CE loss
+                ce_loss = self.ce_criterion(seq_out, targets_shifted)
+                
+                # Calculate CTC loss if needed
+                if self.ctc_weight > 0:
+                    ctc_loss = self.ctc_criterion(ctc_inputs['log_probs'], targets_golden, ctc_inputs['lengths'], transcript_lengths) # type: ignore
+                    loss = ce_loss + self.ctc_weight * ctc_loss
+                else:
+                    ctc_loss = torch.tensor(0.0)
+                    loss = ce_loss
+
+            # Calculate metrics
+            batch_tokens = transcript_lengths.sum().item()
+            total_tokens += batch_tokens
+            running_ce_loss += ce_loss.item() * batch_tokens
+            if self.ctc_weight > 0:
+                running_ctc_loss += ctc_loss.item() * batch_tokens
+            running_joint_loss += loss.item() * batch_tokens
+            
+            # Normalize loss by accumulation steps
+            loss = loss / self.config['training']['gradient_accumulation_steps']
+
+            # Update progress bar
+            avg_ce_loss = running_ce_loss / total_tokens
+            avg_ctc_loss = running_ctc_loss / total_tokens
+            avg_joint_loss = running_joint_loss / total_tokens
+            perplexity = torch.exp(torch.tensor(avg_ce_loss))
+            
+            batch_bar.set_postfix(
+                ce_loss=f"{avg_ce_loss:.4f}",
+                ctc_loss=f"{avg_ctc_loss:.4f}", 
+                joint_loss=f"{avg_joint_loss:.4f}",
+                perplexity=f"{perplexity:.4f}",
+                acc_step=f"{(i % self.config['training']['gradient_accumulation_steps']) + 1}/{self.config['training']['gradient_accumulation_steps']}"
+            )
+            batch_bar.update()
+
+            # Clean up
+            del feats, targets_shifted, targets_golden, feat_lengths, transcript_lengths
+            del seq_out, curr_att, ctc_inputs, loss
+            torch.cuda.empty_cache()
+
+        # Compute final metrics
+        avg_ce_loss = running_ce_loss / total_tokens
+        avg_ctc_loss = running_ctc_loss / total_tokens
+        avg_joint_loss = running_joint_loss / total_tokens
+        avg_perplexity_token = torch.exp(torch.tensor(avg_ce_loss))
+        avg_perplexity_char = torch.exp(torch.tensor(avg_ce_loss / dataloader.dataset.get_avg_chars_per_token()))
+        batch_bar.close()
+
+        return {
+            'ce_loss': avg_ce_loss,
+            'ctc_loss': avg_ctc_loss,
+            'joint_loss': avg_joint_loss,
+            'perplexity_token': avg_perplexity_token.item(),
+            'perplexity_char': avg_perplexity_char.item()
+        }, running_att
         
     
     def train(self, train_dataloader, val_dataloader, epochs: int):
@@ -214,7 +294,6 @@ class ASRTrainer(BaseTrainer):
             raise ValueError("Optimizer is not initialized, initialize it first!")
         
         # TODO: In-fill the train method
-        raise NotImplementedError # Remove once implemented
 
         # Set max transcript length
         self.text_max_len = max(val_dataloader.dataset.text_max_len, train_dataloader.dataset.text_max_len)
@@ -227,11 +306,11 @@ class ASRTrainer(BaseTrainer):
 
         for epoch in range(self.current_epoch, self.current_epoch + epochs):
 
-            # TODO: Train for one epoch
-            train_metrics, train_attn = NotImplementedError, NotImplementedError
+            # Train for one epoch
+            train_metrics, train_attn = self._train_epoch(train_dataloader)
             
-            # TODO: Validate
-            val_metrics, val_results = NotImplementedError, NotImplementedError
+            # Validate
+            val_metrics, val_results = self._validate_epoch(val_dataloader)
 
             # Step ReduceLROnPlateau scheduler with validation loss
             if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
@@ -337,7 +416,6 @@ class ASRTrainer(BaseTrainer):
             raise ValueError("text_max_len is not set. Please run training loop first or provide a max_length")
         
         # TODO: In-fill the recognize method
-        raise NotImplementedError # Remove once implemented
 
         if recognition_config is None:
             # Default config (greedy search)
