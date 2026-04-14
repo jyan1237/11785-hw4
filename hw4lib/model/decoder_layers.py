@@ -93,7 +93,14 @@ class CrossAttentionDecoderLayer(nn.Module):
         self.cross_attn = CrossAttentionLayer(d_model, num_heads, dropout)
         self.ffn = FeedForwardLayer(d_model, d_ff, dropout) 
 
-    def forward(self, x: torch.Tensor, enc_output: torch.Tensor, dec_key_padding_mask: Optional[torch.Tensor] = None, enc_key_padding_mask: Optional[torch.Tensor] = None, attn_mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(
+            self, 
+            x: torch.Tensor, 
+            enc_output: torch.Tensor, 
+            dec_key_padding_mask: Optional[torch.Tensor] = None, 
+            enc_key_padding_mask: Optional[torch.Tensor] = None, 
+            attn_mask: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         '''
         Forward pass for the CrossAttentionDecoderLayer.
         Args:

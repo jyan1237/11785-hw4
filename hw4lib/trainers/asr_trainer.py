@@ -57,14 +57,14 @@ class ASRTrainer(BaseTrainer):
     def __init__(self, model, tokenizer, config, run_name, config_file, device=None):
         super().__init__(model, tokenizer, config, run_name, config_file, device)
 
-        # TODO: Implement the __init__ method
+        # Implement the __init__ method
         
-        # TODO: Initialize CE loss
+        # Initialize CE loss
         # How would you set the ignore_index? 
         # Use value in config to set the label_smoothing argument
-        self.ce_criterion = NotImplementedError
+        self.ce_criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_id, label_smoothing=config['loss']['label_smoothing'])
         
-        # TODO: Initialize CTC loss if needed
+        # Initialize CTC loss if needed
         # You can use the pad token id as the blank index
         self.ctc_criterion = None
         self.ctc_weight = self.config['loss'].get('ctc_weight', 0.0)
@@ -73,9 +73,6 @@ class ASRTrainer(BaseTrainer):
                 blank=self.tokenizer.pad_id,
                 zero_infinity=True
             )
-        
-        raise NotImplementedError # Remove once implemented
-
 
     def _train_epoch(self, dataloader):
         """
@@ -87,7 +84,6 @@ class ASRTrainer(BaseTrainer):
             Tuple[Dict[str, float], Dict[str, torch.Tensor]]: Training metrics and attention weights
         """
         # TODO: In-fill the _train_epoch method
-        raise NotImplementedError # Remove once implemented
     
         # Initialize training variables
         self.model.train()
@@ -102,19 +98,18 @@ class ASRTrainer(BaseTrainer):
         self.optimizer.zero_grad()
 
         for i, batch in enumerate(dataloader):
-            # TODO: Unpack batch and move to device
+            # Unpack batch and move to device
             feats, targets_shifted, targets_golden, feat_lengths, transcript_lengths = batch
 
             with torch.autocast(device_type=self.device, dtype=torch.float16):
-                # TODO: get raw predictions and attention weights and ctc inputs from model
-                seq_out, curr_att, ctc_inputs = NotImplementedError
+                # Get raw predictions and attention weights and ctc inputs from model
+                seq_out, curr_att, ctc_inputs = self.model(feats, targets_shifted, feat_lengths, transcript_lengths)
                 
                 # Update running_att with the latest attention weights
                 running_att = curr_att
                 
-                # TODO: Calculate CE loss
-                ce_loss = NotImplementedError
-                
+                # Calculate CE loss
+                ce_loss = self.ce_criterion(seq_out, targets_shifted)
                 
                 # TODO: Calculate CTC loss if needed
                 if self.ctc_weight > 0:
