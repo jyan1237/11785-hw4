@@ -111,7 +111,7 @@ class CrossAttentionLayer(nn.Module):
         x = self.norm(x)
         
         q = x
-        k = v = x
+        k = v = y
         x, mha_attn_weights = self.mha(q, k, v, key_padding_mask = key_padding_mask, attn_mask=attn_mask)
         
         x = self.dropout(x)
@@ -155,7 +155,7 @@ class FeedForwardLayer(nn.Module):
             nn.Dropout(p=dropout),
             nn.Linear(d_ff, d_model)
         )
-        self.norm = nn.LayerNorm(d_ff)
+        self.norm = nn.LayerNorm(d_model)
         self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

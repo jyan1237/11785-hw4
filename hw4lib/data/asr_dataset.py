@@ -87,13 +87,13 @@ class ASRDataset(Dataset):
 
         # Set up data paths 
         # Use root and partition to get the feature directory
-        self.fbank_dir   = os.path.join(config['data']['root'], partition, 'fbank')
+        self.fbank_dir   = os.path.join(config['root'], partition, 'fbank')
         
         # Get all feature files in the feature directory in sorted order  
         self.fbank_files = sorted(os.listdir(self.fbank_dir))
         
         # Take subset
-        subset_size      = int(config['data']['subset'] * len(self.fbank_files))
+        subset_size      = int(config['subset'] * len(self.fbank_files))
         self.fbank_files = self.fbank_files[:subset_size]
         
         # Get the number of samples in the dataset  
@@ -103,7 +103,7 @@ class ASRDataset(Dataset):
         # Why will test-clean need to be handled differently? -> doesn't have text
         if self.partition != "test-clean":
             # Use root and partition to get the text directory
-            self.text_dir   = os.path.join(config['data']['root'], partition, 'text')
+            self.text_dir   = os.path.join(config['root'], partition, 'text')
 
             # Get all text files in the text directory in sorted order  
             self.text_files = sorted(os.listdir(self.text_dir))
@@ -141,7 +141,7 @@ class ASRDataset(Dataset):
         for i in tqdm(range(self.length)):
             # Load features
             # Features are of shape (num_feats, time)
-            feat = np.load(self.fbank_dir + self.fbank_files[i])
+            feat = torch.tensor(np.load(os.path.join(self.fbank_dir, self.fbank_files[i])))
 
             # Truncate features to num_feats set by you in the config
             feat = feat[:config['num_feats']]
@@ -169,7 +169,7 @@ class ASRDataset(Dataset):
             if self.partition != "test-clean":
                 # Load the transcript
                 # Important Note: This is a very important line of code and you should check whether your transcript is correct after loading (and very dependent in evaluation)
-                transcript = np.load(self.text_dir + self.text_files[i])
+                transcript = "".join(np.load(os.path.join(self.text_dir, self.text_files[i])))
 
                 # Track character count (before tokenization)
                 self.total_chars += len(transcript)
@@ -267,8 +267,8 @@ class ASRDataset(Dataset):
         shifted_transcript, golden_transcript = None, None
         if self.partition != "test-clean":
             # Get transcripts for non-test partitions
-            shifted_transcript = self.transcripts_shifted[idx]
-            golden_transcript  = self.transcripts_golden[idx]
+            shifted_transcript = torch.tensor(self.transcripts_shifted[idx])
+            golden_transcript  = torch.tensor(self.transcripts_golden[idx])
 
         return feat, shifted_transcript, golden_transcript
 
@@ -303,8 +303,8 @@ class ASRDataset(Dataset):
         padded_shifted, padded_golden, transcript_lengths = None, None, None
         if self.partition != "test-clean":
             # Collect shifted and golden transcripts from the batch into a list of tensors (B x T)  
-            batch_shifted      = [data[1].T for data in batch] # B x T
-            batch_golden       = [data[2].T for data in batch] # B x T
+            batch_shifted      = [data[1] for data in batch] # B x T
+            batch_golden       = [data[2] for data in batch] # B x T
 
             # Collect transcript lengths from the batch into a tensor
             transcript_lengths = torch.tensor([shifted.shape[0] for shifted in batch_shifted]) # B  

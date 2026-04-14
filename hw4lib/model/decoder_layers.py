@@ -51,7 +51,7 @@ class SelfAttentionDecoderLayer(nn.Module):
         ''' 
         super().__init__()
         # Implement __init__ Initialize the sublayers 
-        self.sal = SelfAttentionLayer(d_model, num_heads, dropout)
+        self.self_attn = SelfAttentionLayer(d_model, num_heads, dropout)
         self.ffn = FeedForwardLayer(d_model, d_ff, dropout)      
 
     def forward(self, x: torch.Tensor, key_padding_mask: Optional[torch.Tensor] = None, attn_mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -67,7 +67,7 @@ class SelfAttentionDecoderLayer(nn.Module):
             mha_attn_weights (torch.Tensor): The attention weights. shape: (batch_size, seq_len, seq_len)   
         '''
         # Implement forward: Follow the figure in the writeup
-        x, mha_attn_weights = self.sal(x, key_padding_mask, attn_mask)
+        x, mha_attn_weights = self.self_attn(x, key_padding_mask, attn_mask)
         x = self.ffn(x)
 
         # Return the output tensor and attention weights
@@ -89,8 +89,8 @@ class CrossAttentionDecoderLayer(nn.Module):
         '''
         super().__init__()
         # Implement __init__ Initialize the sublayers 
-        self.sal = SelfAttentionLayer(d_model, num_heads, dropout)
-        self.cal = CrossAttentionLayer(d_model, num_heads, dropout)
+        self.self_attn = SelfAttentionLayer(d_model, num_heads, dropout)
+        self.cross_attn = CrossAttentionLayer(d_model, num_heads, dropout)
         self.ffn = FeedForwardLayer(d_model, d_ff, dropout) 
 
     def forward(self, x: torch.Tensor, enc_output: torch.Tensor, dec_key_padding_mask: Optional[torch.Tensor] = None, enc_key_padding_mask: Optional[torch.Tensor] = None, attn_mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -108,8 +108,8 @@ class CrossAttentionDecoderLayer(nn.Module):
             cross_attn_weights (torch.Tensor): The attention weights. shape: (batch_size, seq_len, seq_len)    
         '''
         # Implement forward: Follow the figure in the writeup
-        x, self_attn_weights = self.sal(x, dec_key_padding_mask, attn_mask)
-        x, cross_attn_weights = self.cal(x, enc_output, enc_key_padding_mask)
+        x, self_attn_weights = self.self_attn(x, dec_key_padding_mask, attn_mask)
+        x, cross_attn_weights = self.cross_attn(x, enc_output, enc_key_padding_mask)
         x = self.ffn(x)
 
         # Return the output tensor and attention weights    
