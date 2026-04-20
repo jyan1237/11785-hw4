@@ -267,10 +267,10 @@ class SequenceGenerator:
             # Process Logits
             next_token_scores = self._apply_repeat_penalty(next_token_scores, x, repeat_penalty)
             next_token_scores = next_token_scores / temperature
-            next_token_scores = torch.log_softmax(logits, dim=2)
+            next_token_scores = torch.log_softmax(next_token_scores, dim=2)
 
             # Compute cumulative scores
-            cum_scores = scores.unsqueeze(1) + next_token_scores
+            cum_scores = scores.unsqueeze(2) + next_token_scores
 
             # Flatten cum_scores for beam selection
             # (batch_size, beam_width * vocab_size)
