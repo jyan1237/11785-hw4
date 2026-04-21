@@ -195,86 +195,31 @@ class ASRTrainer(BaseTrainer):
             Tuple[Dict[str, float], List[Dict[str, Any]]]: Validation metrics and recognition results
         """
         # TODO: In-fill the _validate_epoch method
-    
-        # Initialize training variables
-        self.model.eval()
-        batch_bar = tqdm(total=len(dataloader), dynamic_ncols=True, leave=False, position=0, desc="[Training ASR]")
-        running_ce_loss = 0.0
-        running_ctc_loss = 0.0
-        running_joint_loss = 0.0
-        total_tokens = 0
-        running_recog = []  # Initialize running_att here
 
-        for i, batch in enumerate(dataloader):
-            # Unpack batch and move to device
-            feats, targets_shifted, targets_golden, feat_lengths, transcript_lengths = batch
+        recog_config = {
+            'num_batches': None,
+            'beam_width': 5,
+            'temperature': 1.0,
+            'repeat_penalty': 1.0,
+            'lm_weight': 0.0,
+            'lm_model': None
+        }
+        config_name = "Beam5"
+        recog_results = self.recognize(dataloader, recog_config, config_name)
+        
+        # Extract all generated sequences and targets into lists
+        all_hypotheses = [r['generated'] for r in recog_results]
+        all_references = [r['target'] for r in recog_results]
 
-            with torch.autocast(device_type=self.device, dtype=torch.float16):
-                # Get raw predictions and attention weights and ctc inputs from model
-                seq_out, _, ctc_inputs = self.model(feats, targets_shifted, feat_lengths, transcript_lengths)
-                
-                # Find current recognition results (TODO)
-                recog_config = self._get_evaluation_recognition_configs()
-                cur_recog = self.recognize(dataloader, recog_config)
-                running_recog.append(cur_recog)
-                
-                # Calculate CE loss
-                ce_loss = self.ce_criterion(seq_out, targets_shifted)
-                
-                # Calculate CTC loss if needed
-                if self.ctc_weight > 0:
-                    ctc_loss = self.ctc_criterion(ctc_inputs['log_probs'], targets_golden, ctc_inputs['lengths'], transcript_lengths) # type: ignore
-                    loss = ce_loss + self.ctc_weight * ctc_loss
-                else:
-                    ctc_loss = torch.tensor(0.0)
-                    loss = ce_loss
+        # Calculate all the metrics in one go 
+        wer, cer, word_dist = self._calculate_asr_metrics(all_references, all_hypotheses)
 
-            # Calculate metrics
-            batch_tokens = transcript_lengths.sum().item()
-            total_tokens += batch_tokens
-            running_ce_loss += ce_loss.item() * batch_tokens
-            if self.ctc_weight > 0:
-                running_ctc_loss += ctc_loss.item() * batch_tokens
-            running_joint_loss += loss.item() * batch_tokens
-            
-            # Normalize loss by accumulation steps
-            loss = loss / self.config['training']['gradient_accumulation_steps']
-
-            # Update progress bar
-            avg_ce_loss = running_ce_loss / total_tokens
-            avg_ctc_loss = running_ctc_loss / total_tokens
-            avg_joint_loss = running_joint_loss / total_tokens
-            perplexity = torch.exp(torch.tensor(avg_ce_loss))
-            
-            batch_bar.set_postfix(
-                ce_loss=f"{avg_ce_loss:.4f}",
-                ctc_loss=f"{avg_ctc_loss:.4f}", 
-                joint_loss=f"{avg_joint_loss:.4f}",
-                perplexity=f"{perplexity:.4f}",
-                acc_step=f"{(i % self.config['training']['gradient_accumulation_steps']) + 1}/{self.config['training']['gradient_accumulation_steps']}"
-            )
-            batch_bar.update()
-
-            # Clean up
-            del feats, targets_shifted, targets_golden, feat_lengths, transcript_lengths
-            del seq_out, cur_recog, ctc_inputs, loss
-            torch.cuda.empty_cache()
-
-        # Compute final metrics
-        avg_ce_loss = running_ce_loss / total_tokens
-        avg_ctc_loss = running_ctc_loss / total_tokens
-        avg_joint_loss = running_joint_loss / total_tokens
-        avg_perplexity_token = torch.exp(torch.tensor(avg_ce_loss))
-        avg_perplexity_char = torch.exp(torch.tensor(avg_ce_loss / dataloader.dataset.get_avg_chars_per_token()))
-        batch_bar.close()
-
-        return {
-            'ce_loss': avg_ce_loss,
-            'ctc_loss': avg_ctc_loss,
-            'joint_loss': avg_joint_loss,
-            'perplexity_token': avg_perplexity_token.item(),
-            'perplexity_char': avg_perplexity_char.item()
-        }, running_recog
+        valid_metrics = {
+            'word_dist': word_dist, 
+            'wer': wer, 
+            'cer': cer, 
+        }
+        return valid_metrics, recog_results
         
     
     def train(self, train_dataloader, val_dataloader, epochs: int):
@@ -583,11 +528,7 @@ class ASRTrainer(BaseTrainer):
         wer = wer_metric(hypotheses, references)  # torchmetrics returns as decimal
         cer = cer_metric(hypotheses, references)  # torchmetrics returns as decimal
 
-        return {
-            'word_dist': word_dist.item(),
-            'wer': wer.item() * 100,
-            'cer': cer.item() * 100
-        }
+        return word_dist.item(), wer.item() * 100, cer.item() * 100
     
 # -------------------------------------------------------------------------------------------------
 

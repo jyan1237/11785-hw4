@@ -27,25 +27,25 @@ class Linear:
         
         Handles arbitrary batch dimensions like PyTorch
         """
-        # TODO: Implement forward pass
-        
+        # Implement forward pass [self.A @ self.W.T: (*, out_features)]
+        Z = self.A @ self.W.T + self.b.T
         # Store input for backward pass
         self.A = A
         
-        raise NotImplementedError
+        return Z
 
     def backward(self, dLdZ):
         """
         :param dLdZ: Gradient of loss wrt output Z (*, out_features)
         :return: Gradient of loss wrt input A (*, in_features)
         """
-        # TODO: Implement backward pass
+        # Implement backward pass
 
         # Compute gradients
-        self.dLdA = NotImplementedError
+        self.dLdA = dLdZ @ self.W
         self.dLdW = NotImplementedError
         self.dLdb = NotImplementedError
         self.dLdA = NotImplementedError
         
         # Return gradient of loss wrt input
-        raise NotImplementedError
+        return self.dLdA
