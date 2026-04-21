@@ -12,7 +12,7 @@ class ScaledDotProductAttention:
         # Initialize your softmax layer
         # What dimension should you pass to the softmax constructor?
         self.eps = 1e10 # DO NOT MODIFY
-        self.softmax = NotImplementedError
+        self.softmax = Softmax(dim=-1) # done along source sequence dim from K
         
     
     def forward(self, Q, K, V, mask=None):
@@ -26,21 +26,22 @@ class ScaledDotProductAttention:
         # TODO: Implement forward pass
         
         # Calculate attention scores
-        scaled_dot_product = NotImplementedError
+        d_k = np.sqrt(Q.shape[-1])
+        scaled_dot_product = Q @ np.swapaxes(K, -1, -2) / d_k
         
         # Apply mask before softmax if provided
         if mask is not None:
-            scaled_dot_product = NotImplementedError
+            scaled_dot_product[mask] = -self.eps
 
         # Compute attention scores: 
         # # Think about which dimension you should apply Softmax
-        self.attention_scores = NotImplementedError
+        self.attention_scores = self.softmax.forward(scaled_dot_product)
 
         # Calculate final output
-        output = NotImplementedError
+        output = self.attention_scores @ V
 
         # Return final output
-        raise NotImplementedError
+        return output
     
     def backward(self, d_output):
         """
