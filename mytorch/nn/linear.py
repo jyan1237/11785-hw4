@@ -41,11 +41,15 @@ class Linear:
         """
         # Implement backward pass
 
+        dLdZ_flat = dLdZ.reshape(-1, dLdZ.shape[-1])
+        A_flat = self.A.reshape(-1, self.A.shape[-1])
+
         # Compute gradients
-        self.dLdA = dLdZ @ self.W
-        self.dLdW = NotImplementedError
-        self.dLdb = NotImplementedError
-        self.dLdA = NotImplementedError
+        self.dLdA = dLdZ_flat @ self.W
+        
+        self.dLdW = dLdZ_flat.T @ A_flat
+        self.dLdb = np.sum(dLdZ_flat, axis=0)
+        self.dLdA = self.dLdA.reshape(self.A.shape)
         
         # Return gradient of loss wrt input
         return self.dLdA
