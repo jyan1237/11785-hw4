@@ -23,11 +23,15 @@ class ScaledDotProductAttention:
         :param mask: Boolean mask matrix of shape (N, ..., H, L, S) or broadcastable shape where 1/True indicates a position to ignore
         :return: Output matrix of shape (N, ..., H, L, Ev)
         """
-        # TODO: Implement forward pass
-        
+        # Implement forward pass
+        # save Q, K, V
+        self.Q = Q
+        self.K = K
+        self.V = V
+
         # Calculate attention scores
-        d_k = np.sqrt(Q.shape[-1])
-        scaled_dot_product = Q @ np.swapaxes(K, -1, -2) / d_k
+        sqrt_d_k = np.sqrt(Q.shape[-1])
+        scaled_dot_product = Q @ np.swapaxes(K, -1, -2) / sqrt_d_k
         
         # Apply mask before softmax if provided
         if mask is not None:
@@ -51,19 +55,20 @@ class ScaledDotProductAttention:
         # TODO: Implement backward pass
 
         # Calculate gradients for V
-        d_V = NotImplementedError
+        d_V = np.swapaxes(self.attention_scores, -1, -2) @ d_output
         
         # Calculate gradients for attention scores
-        d_attention_scores = NotImplementedError
-        d_scaled_dot_product = NotImplementedError
+        d_attention_scores = d_output @ np.swapaxes(self.V, -1, -2)
+        d_scaled_dot_product = self.softmax.backward(d_attention_scores)
         
         # Scale gradients by sqrt(d_k)
-        d_scaled_dot_product = NotImplementedError
+        sqrt_d_k = np.sqrt(self.Q.shape[-1])
+        d_scaled_dot_product = d_scaled_dot_product / sqrt_d_k
         
         # Calculate gradients for Q and K
-        d_Q = NotImplementedError
-        d_K = NotImplementedError
+        d_Q = d_scaled_dot_product @ self.K
+        d_K = np.swapaxes(d_scaled_dot_product, -1, -2) @ self.Q
         
         # Return gradients for Q, K, V
-        raise NotImplementedError
+        return d_Q, d_K, d_V
 
