@@ -114,8 +114,8 @@ class ASRTrainer(BaseTrainer):
                 # Update running_att with the latest attention weights
                 running_att = curr_att
                 
-                # Calculate CE loss
-                ce_loss = self.ce_criterion(seq_out, targets_shifted)
+                # Calculate CE loss 
+                ce_loss = self.ce_criterion(seq_out.permute(0,2,1), targets_shifted)
                 
                 # Calculate CTC loss if needed
                 if self.ctc_weight > 0:
