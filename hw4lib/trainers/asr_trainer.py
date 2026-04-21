@@ -54,7 +54,7 @@ class ASRTrainer(BaseTrainer):
         - Run inference
         - Handle both greedy and optionally beam search decoding
     """
-    def __init__(self, model, tokenizer, config, run_name, config_file, device=None):
+    def __init__(self, model, tokenizer, config, run_name, config_file, device=None, lm_model=None):
         super().__init__(model, tokenizer, config, run_name, config_file, device)
 
         # Implement the __init__ method
@@ -75,6 +75,7 @@ class ASRTrainer(BaseTrainer):
             )
 
         self.scaler = torch.cuda.amp.GradScaler()
+        self.lmmodel = lm_model
 
     def _train_epoch(self, dataloader):
         """
@@ -208,7 +209,7 @@ class ASRTrainer(BaseTrainer):
             'temperature': 1.0,
             'repeat_penalty': 1.0,
             'lm_weight': 0.0,
-            'lm_model': None
+            'lm_model': self.lm_model
         }
         config_name = "Beam5"
         recog_results = self.recognize(dataloader, recog_config, config_name)
@@ -689,8 +690,8 @@ class ProgressiveTrainer(ASRTrainer):
     - Stage transitions are handled automatically by the trainer
     - The same optimizer and scheduler are used for all stages so keep that in mind while setting the learning rates and other parameters
     """
-    def __init__(self, model, tokenizer, config, run_name, config_file, device=None):
-        super().__init__(model, tokenizer, config, run_name, config_file, device)
+    def __init__(self, model, tokenizer, config, run_name, config_file, device=None, lm_model=None):
+        super().__init__(model, tokenizer, config, run_name, config_file, device, lm_model)
         self.current_stage = 0
         # Store original layer states
         self.all_encoder_layers = list(self.model.enc_layers)
