@@ -92,7 +92,7 @@ class ASRTrainer(BaseTrainer):
         running_ctc_loss = 0.0
         running_joint_loss = 0.0
         total_tokens = 0
-        running_att = None  # Initialize running_att here
+        running_att = []  # Initialize running_att here
 
         # Only zero gradients when starting a new accumulation cycle
         self.optimizer.zero_grad() # type: ignore
@@ -105,8 +105,8 @@ class ASRTrainer(BaseTrainer):
                 # Get raw predictions and attention weights and ctc inputs from model
                 seq_out, curr_att, ctc_inputs = self.model(feats, targets_shifted, feat_lengths, transcript_lengths)
                 
-                # Update running_att with the latest attention weights (TODO: maybe wrong)
-                running_att = curr_att
+                # Update running_att with the latest attention weights
+                running_att.append(curr_att)
                 
                 # Calculate CE loss
                 ce_loss = self.ce_criterion(seq_out, targets_shifted)
@@ -203,10 +203,7 @@ class ASRTrainer(BaseTrainer):
         running_ctc_loss = 0.0
         running_joint_loss = 0.0
         total_tokens = 0
-        running_att = None  # Initialize running_att here
-
-        # Only zero gradients when starting a new accumulation cycle
-        self.optimizer.zero_grad() # type: ignore
+        running_recog = []  # Initialize running_att here
 
         for i, batch in enumerate(dataloader):
             # Unpack batch and move to device
@@ -214,10 +211,12 @@ class ASRTrainer(BaseTrainer):
 
             with torch.autocast(device_type=self.device, dtype=torch.float16):
                 # Get raw predictions and attention weights and ctc inputs from model
-                seq_out, curr_att, ctc_inputs = self.model(feats, targets_shifted, feat_lengths, transcript_lengths)
+                seq_out, _, ctc_inputs = self.model(feats, targets_shifted, feat_lengths, transcript_lengths)
                 
-                # Update running_att with the latest attention weights (TODO: maybe wrong)
-                running_att = curr_att
+                # Find current recognition results (TODO)
+                recog_config = self._get_evaluation_recognition_configs()
+                cur_recog = self.recognize(dataloader, recog_config)
+                running_recog.append(cur_recog)
                 
                 # Calculate CE loss
                 ce_loss = self.ce_criterion(seq_out, targets_shifted)
@@ -258,7 +257,7 @@ class ASRTrainer(BaseTrainer):
 
             # Clean up
             del feats, targets_shifted, targets_golden, feat_lengths, transcript_lengths
-            del seq_out, curr_att, ctc_inputs, loss
+            del seq_out, cur_recog, ctc_inputs, loss
             torch.cuda.empty_cache()
 
         # Compute final metrics
@@ -275,7 +274,7 @@ class ASRTrainer(BaseTrainer):
             'joint_loss': avg_joint_loss,
             'perplexity_token': avg_perplexity_token.item(),
             'perplexity_char': avg_perplexity_char.item()
-        }, running_att
+        }, running_recog
         
     
     def train(self, train_dataloader, val_dataloader, epochs: int):
@@ -449,12 +448,17 @@ class ASRTrainer(BaseTrainer):
         # Run inference
         with torch.inference_mode():
             for i, batch in enumerate(dataloader):
-                # TODO: Unpack batch and move to device
-                # TODO: Handle both cases where targets may or may not be None (val set v. test set) 
+                # Unpack batch and move to device
+                # Handle both cases where targets may or may not be None (val set v. test set) 
                 feats, _, targets_golden, feat_lengths, _ = batch
+
+                feats = feats.to(self.device)
+                feat_lengths = feat_lengths.to(self.device)
+                if targets_golden != None:
+                    targets_golden = targets_golden.to(self.device)
                 
-                # TODO: Encode speech features to hidden states
-                encoder_output, pad_mask_src, _, _ = NotImplementedError, NotImplementedError, NotImplementedError, NotImplementedError
+                # Encode speech features to hidden states
+                encoder_output, pad_mask_src, _, _ = self.model.encode(feats, feat_lengths)
                 
                 # Define scoring function for this batch
                 def get_score(x):
@@ -467,22 +471,30 @@ class ASRTrainer(BaseTrainer):
                 # Set score function of generator
                 generator.score_fn = get_score
 
-                # TODO: Initialize prompts as a batch of SOS tokens
+                # Initialize prompts as a batch of SOS tokens 
                 batch_size = feats.size(0)
-                prompts = NotImplementedError
+                prompts = torch.full((batch_size, 1), self.tokenizer.sos_id, device=self.device)
 
-                # TODO: Generate sequences
+                # Generate sequences
                 if recognition_config['beam_width'] > 1:
-                    # TODO: If you have implemented beam search, generate sequences using beam search
-                    seqs, scores = NotImplementedError, NotImplementedError
-                    raise NotImplementedError # Remove if you implemented the beam search method
+                    # If you have implemented beam search, generate sequences using beam search
+                    seqs, scores = generator.generate_beam(
+                        prompts, 
+                        recognition_config['beam_width'], 
+                        recognition_config['temperature'], 
+                        recognition_config['repeat_penalty']
+                    )
+                    
                     # Pick best beam
                     seqs = seqs[:, 0, :]
                     scores = scores[:, 0]
                 else:
-                    # TODO: Generate sequences using greedy search
-                    seqs, scores = NotImplementedError, NotImplementedError
-                    raise NotImplementedError # Remove if you implemented the greedy search method
+                    # Generate sequences using greedy search
+                    seqs, scores = generator.generate_greedy(
+                        prompts, 
+                        recognition_config['temperature'], 
+                        recognition_config['repeat_penalty']
+                    )
 
                 # Clean up
                 del feats, feat_lengths, encoder_output, pad_mask_src, prompts
