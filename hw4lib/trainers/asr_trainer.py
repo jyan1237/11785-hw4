@@ -74,6 +74,8 @@ class ASRTrainer(BaseTrainer):
                 zero_infinity=True
             )
 
+        self.scaler = torch.cuda.amp.GradScaler()
+
     def _train_epoch(self, dataloader):
         """
         Train for one epoch.
@@ -92,7 +94,7 @@ class ASRTrainer(BaseTrainer):
         running_ctc_loss = 0.0
         running_joint_loss = 0.0
         total_tokens = 0
-        running_att = []  # Initialize running_att here
+        running_att = None  # Initialize running_att here
 
         # Only zero gradients when starting a new accumulation cycle
         self.optimizer.zero_grad() # type: ignore
@@ -100,13 +102,17 @@ class ASRTrainer(BaseTrainer):
         for i, batch in enumerate(dataloader):
             # Unpack batch and move to device
             feats, targets_shifted, targets_golden, feat_lengths, transcript_lengths = batch
+            feats = feats.to(self.device)
+            targets_shifted = targets_shifted.to(self.device)
+            feat_lengths = feat_lengths.to(self.device)
+            transcript_lengths = transcript_lengths.to(self.device)
 
             with torch.autocast(device_type=self.device, dtype=torch.float16):
                 # Get raw predictions and attention weights and ctc inputs from model
                 seq_out, curr_att, ctc_inputs = self.model(feats, targets_shifted, feat_lengths, transcript_lengths)
                 
                 # Update running_att with the latest attention weights
-                running_att.append(curr_att)
+                running_att = curr_att
                 
                 # Calculate CE loss
                 ce_loss = self.ce_criterion(seq_out, targets_shifted)
@@ -131,7 +137,7 @@ class ASRTrainer(BaseTrainer):
             loss = loss / self.config['training']['gradient_accumulation_steps']
 
             # Backpropagate the loss
-            self.scaler = torch.cuda.amp.GradScaler()
+            self.scaler.scale(loss).backward()
 
             # Only update weights after accumulating enough gradients
             if (i + 1) % self.config['training']['gradient_accumulation_steps'] == 0:
