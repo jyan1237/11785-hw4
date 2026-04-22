@@ -20,14 +20,14 @@ class MultiHeadAttention:
         self.num_heads = num_heads
         
         # Initialize your scaled dot product attention layer
-        self.attention = NotImplementedError
+        self.attention = ScaledDotProductAttention()
         
         # Initialize your linear layer
         #  embed_dim -> embed_dim
-        self.q_proj   = NotImplementedError
-        self.k_proj   = NotImplementedError
-        self.v_proj   = NotImplementedError
-        self.out_proj = NotImplementedError
+        self.q_proj   = Linear(embed_dim, embed_dim)
+        self.k_proj   = Linear(embed_dim, embed_dim)
+        self.v_proj   = Linear(embed_dim, embed_dim)
+        self.out_proj = Linear(embed_dim, embed_dim)
 
     def init_weights(self, Wq, bq, Wk, bk, Wv, bv, Wo, bo):
         """
