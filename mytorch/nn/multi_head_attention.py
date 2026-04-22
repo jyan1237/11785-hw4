@@ -84,7 +84,6 @@ class MultiHeadAttention:
         """
         Backward pass for multi-head attention.
         """
-
         # Backpropagate through output projection
         d_attn_output = self.out_proj.backward(d_output)
 
@@ -110,12 +109,17 @@ class MultiHeadAttention:
         """
         Merge two mask types into a single mask.
         """
-        # Expand masks for broadcasting
-        key_mask = np.broadcast_to(key_padding_mask, (self.N, self.num_heads, self.L, self.S))
-        attention_mask = np.broadcast_to(attn_mask, (self.N, self.num_heads, self.L, self.S))
+        # Expand masks for broadcasting (also handles case where some are none)
+        combined_mask = None
+        if key_padding_mask is not None:
+            key_mask = key_padding_mask[:, np.newaxis, np.newaxis, :]
+            key_mask = np.broadcast_to(key_mask, (self.N, self.num_heads, self.L, self.S))
         
-        # Combine masks
-        combined_mask = key_mask | attention_mask
+        if attn_mask is not None:
+            attention_mask = attn_mask[np.newaxis, np.newaxis, :, :]
+            attention_mask = np.broadcast_to(attention_mask, (self.N, self.num_heads, self.L, self.S))
+            # Combine masks
+            combined_mask = key_mask | attention_mask if key_padding_mask is not None else attention_mask 
         
         return combined_mask
 
@@ -124,8 +128,8 @@ class MultiHeadAttention:
         Reshape tensor for multi-head attention.
         """
         # Reshape and transpose for heads
-        x = x.reshape((self.N, self.L, self.E // self.num_heads, self.num_heads))
-        x = np.transpose(x, (0, 3, 1, 2))
+        x = x.reshape((self.N, self.L, self.num_heads, self.E // self.num_heads))
+        x = np.transpose(x, (0, 2, 1, 3))
         
         return x
 
@@ -137,7 +141,7 @@ class MultiHeadAttention:
         :return: (N, L, embed_dim)
         """
         # Transpose and reshape
-        x = np.transpose(x, (0, 2, 3, 1))
+        x = np.transpose(x, (0, 2, 1, 3))
         x = x.reshape((self.N, self.L, self.E))
         
         return x
