@@ -115,20 +115,21 @@ class DecoderOnlyTransformer(nn.Module):
         self.num_classes     = num_classes
         self.num_layers      = num_layers
 
-        # TODO: Implement __init__: 
+        # Implement __init__: 
         # create decoder layers, target embedding, positional encoding, dropout, layer norm, and final linear layer
-        self.dec_layers     = NotImplementedError # ModuleList of decoder layers
-        self.target_embedding       = NotImplementedError
-        self.positional_encoding    = NotImplementedError
-        self.final_linear           = NotImplementedError 
-        self.dropout                = NotImplementedError
-        self.norm                   = NotImplementedError # Layer norm
+        self.dec_layers     = nn.ModuleList([ # ModuleList of decoder layers
+            SelfAttentionDecoderLayer(d_model, num_heads, d_ff, dropout) 
+            for _ in range(num_layers)
+        ]) 
+        self.target_embedding       = nn.Embedding(num_classes, d_model, padding_idx=None)
+        self.positional_encoding    = PositionalEncoding(d_model, max_len)
+        self.final_linear           = nn.Linear(d_model, num_classes) 
+        self.dropout                = nn.Dropout(p=dropout)
+        self.norm                   = nn.LayerNorm(d_model) # Layer norm
 
         # Weight tying (extra form of regularization, read more about it)
         if weight_tying:
             self.target_embedding.weight = self.final_linear.weight
-
-        raise NotImplementedError # Remove once implemented
 
     def forward(self, padded_targets: torch.Tensor, target_lengths: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, dict]:
         '''
@@ -144,34 +145,41 @@ class DecoderOnlyTransformer(nn.Module):
         if self.training and target_lengths is None:
             raise ValueError("target_lengths must be provided during training")
         
-        # TODO: Implement forward
+        # Implement forward
 
-        # TODO: Create padding mask for padded_targets on the same device as the input (use PadMask)
+        # Create padding mask for padded_targets on the same device as the input (use PadMask)
         pad_mask_dec = None
         if target_lengths is not None:
-            pad_mask_dec = NotImplementedError
+            pad_mask_dec = PadMask(padded_targets, target_lengths)
         
-        # TODO: Create causal mask to prevent attending to future tokens on the same device as the input (use CausalMask)
-        causal_mask = NotImplementedError
+        # Create causal mask to prevent attending to future tokens on the same device as the input (use CausalMask)
+        causal_mask = CausalMask(padded_targets)
 
-        # TODO: Apply embedding, positional encoding, and dropout
-        x = NotImplementedError
+        # Apply embedding, positional encoding, and dropout
+        x = self.target_embedding(padded_targets)
+        x = self.positional_encoding(x)
+        x = self.dropout(x)
 
-        # TODO: Pass through decoder layers and save attention
+        # Pass through decoder layers and save attention
         runnint_att = {}
         for i in range(self.num_layers):
             # Optionally apply LayerDrop during training (More regularization!)
             if self.training and self.layer_drop_rate > 0 and random.random() < self.layer_drop_rate:
                 continue
             
-            x, attention = NotImplementedError, NotImplementedError
+            x, attention = self.dec_layers[i](
+                x, 
+                pad_mask_dec,
+                causal_mask
+            )
             runnint_att['layer{}_dec_self'.format(i + 1)] = attention
 
-        # TODO: Final normalization and projection for next character prediction
-        seq_out = NotImplementedError
+        # Final normalization and projection for next character prediction
+        x = self.norm(x)
+        seq_out = self.final_linear(x)
         
-        # TODO: Return the output sequence and running attention weights
-        raise NotImplementedError
+        # Return the output sequence and running attention weights
+        return seq_out, runnint_att
     
     def score(self, batch_prompts: torch.Tensor) -> torch.Tensor:
         '''

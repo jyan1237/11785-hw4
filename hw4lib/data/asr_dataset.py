@@ -267,8 +267,8 @@ class ASRDataset(Dataset):
         shifted_transcript, golden_transcript = None, None
         if self.partition != "test-clean":
             # Get transcripts for non-test partitions
-            shifted_transcript = torch.tensor(self.transcripts_shifted[idx])
-            golden_transcript  = torch.tensor(self.transcripts_golden[idx])
+            shifted_transcript = torch.tensor(self.transcripts_shifted[idx], dtype=torch.long)
+            golden_transcript  = torch.tensor(self.transcripts_golden[idx], dtype=torch.long)
 
         return feat, shifted_transcript, golden_transcript
 

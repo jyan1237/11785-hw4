@@ -47,7 +47,6 @@ class LMDataset(Dataset):
             tokenizer (H4Tokenizer): Tokenizer for encoding/decoding text
         """
         # TODO: Implement __init__
-        raise NotImplementedError # Remove once implemented
         
         # Store configuration and other args
         # DO NOT MODIFY
@@ -55,21 +54,21 @@ class LMDataset(Dataset):
         self.partition = partition
         self.tokenizer = tokenizer
 
-        # TODO: Get tokenizer ids for special tokens (eos, sos, pad)
-        self.eos_token = NotImplementedError
-        self.sos_token = NotImplementedError
-        self.pad_token = NotImplementedError
+        # Get tokenizer ids for special tokens (eos, sos, pad)
+        self.eos_token = tokenizer.eos_id
+        self.sos_token = tokenizer.sos_id
+        self.pad_token = tokenizer.pad_id
 
         # Set up data paths 
-        # TODO: Join root and partition to get the text directory
-        self.text_dir = NotImplementedError
+        # Join root and partition to get the text directory
+        self.text_dir = os.path.join(config['root'], partition)
 
-        # TODO: Get all text files in the text directory in sorted order  
-        self.text_files = NotImplementedError
+        # Get all text files in the text directory in sorted order  
+        self.text_files = sorted(os.listdir(self.text_dir))
 
-        # TODO: Take subset
-        subset_size = NotImplementedError
-        self.text_files = NotImplementedError
+        # Take subset
+        subset_size = int(config['subset'] * len(self.text_files))
+        self.text_files = self.text_files[:subset_size]
 
         # Initialize lists to store transcripts
         self.transcripts_shifted = []
@@ -83,15 +82,15 @@ class LMDataset(Dataset):
         
         print(f"Loading transcripts for {partition} partition...")
         for file in tqdm(self.text_files):
-            # TODO: Load the transcript
-            transcript = NotImplementedError
+            # Load the transcript
+            transcript = str(np.load(os.path.join(self.text_dir, file)))
             
             # Track character count (before tokenization)
             # DO NOT MODIFY
             self.total_chars += len(transcript)
             
-            # TODO: Use tokenizer to encode the transcript
-            tokenized = NotImplementedError
+            # Use tokenizer to encode the transcript
+            tokenized = self.tokenizer.encode(transcript)
             
             # Track token count (excluding special tokens)
             # DO NOT MODIFY
@@ -101,7 +100,12 @@ class LMDataset(Dataset):
             # DO NOT MODIFY
             self.text_max_len = max(self.text_max_len, len(tokenized)+1)
             
-            # TODO: Create shifted and golden versions by adding sos and eos tokens
+            # Create shifted and golden versions by adding sos and eos tokens
+            transcript_shifted = [self.sos_token] + tokenized
+            transcript_golden = tokenized + [self.eos_token]
+
+            self.transcripts_shifted.append(transcript_shifted)
+            self.transcripts_golden.append(transcript_golden)
 
 
         # Calculate average characters per token
@@ -113,8 +117,8 @@ class LMDataset(Dataset):
         if not (len(self.transcripts_shifted) == len(self.transcripts_golden)):
             raise ValueError("Shifted and golden transcripts are misaligned")
         
-        # TODO: Store the length of the dataset
-        self.length = NotImplementedError
+        # Store the length of the dataset
+        self.length = len(self.text_files)
         
     def get_avg_chars_per_token(self) -> float:
         '''
@@ -125,8 +129,8 @@ class LMDataset(Dataset):
     
     def __len__(self) -> int:
         """Returns the number of samples in the dataset."""
-        # TODO: Implement __len__
-        raise NotImplementedError
+        # Implement __len__
+        return self.length
 
     def __getitem__(self, idx: int) -> Tuple[torch.LongTensor, torch.LongTensor]:
         """
@@ -140,11 +144,11 @@ class LMDataset(Dataset):
                 - shifted_transcript: LongTensor starting with SOS token
                 - golden_transcript: LongTensor ending with EOS token
         """
-        # TODO: Implement __getitem__
+        # Implement __getitem__
         # Make sure you convert to the right type
-        shifted = NotImplementedError
-        golden  = NotImplementedError
-        raise NotImplementedError
+        shifted = torch.tensor(self.transcripts_shifted[idx], dtype=torch.long)
+        golden  = torch.tensor(self.transcripts_golden[idx], dtype=torch.long) 
+        return shifted, golden
     
     
     def collate_fn(self, batch: List[Tuple[torch.LongTensor, torch.LongTensor]]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -161,18 +165,18 @@ class LMDataset(Dataset):
                 - lengths: Original sequence lengths before padding
         """
         # TODO: Implement collate_fn
-        # TODO: Unzip the batch into separate lists
-        shifted_transcripts, golden_transcripts = NotImplementedError
+        # Unzip the batch into separate lists
+        shifted_transcripts, golden_transcripts = zip(*batch)
         
-        # TODO: Record the sequence lengths before padding
-        lengths = NotImplementedError # (B)
+        # Record the sequence lengths before padding
+        lengths = torch.tensor([transcript.shape[0] for transcript in shifted_transcripts]) # (B)
 
-        # TODO: Pad sequences 
-        padded_shifted = NotImplementedError # (B, T)
-        padded_golden  = NotImplementedError # (B, T)
+        # Pad sequences 
+        padded_shifted = pad_sequence(shifted_transcripts, batch_first=True) # (B, T)
+        padded_golden  = pad_sequence(golden_transcripts, batch_first=True) # (B, T)
 
-        # TODO: Return the padded shifted, padded golden, and lengths
-        raise NotImplementedError
+        # Return the padded shifted, padded golden, and lengths
+        return padded_shifted, padded_golden, lengths
 
     def sample_prompts(self, num_samples: int, prompt_length: int, seed: int = None) -> Tuple[torch.LongTensor, List[torch.LongTensor]]:
         """

@@ -74,7 +74,8 @@ def test_multi_head_attention_forward():
             key_padding_mask=key_padding_mask.numpy(), 
             attn_mask=attn_mask.numpy()
         )
-
+        print(pytorch_output.shape)
+        print(mytorch_output.shape)
         # Compare outputs
         assert np.allclose(pytorch_output.detach().numpy(), mytorch_output, rtol=1e-4, atol=1e-4), \
             f"Outputs don't match for case: batch_size={batch_size}, seq_len={seq_len}, embed_dim={embed_dim}, num_heads={num_heads}"
