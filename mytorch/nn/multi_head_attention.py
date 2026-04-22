@@ -111,23 +111,23 @@ class MultiHeadAttention:
         Merge two mask types into a single mask.
         """
         # Expand masks for broadcasting
-        key_mask = NotImplementedError
-        attention_mask = NotImplementedError
+        key_mask = np.broadcast_to(key_padding_mask, (self.N, self.num_heads, self.L, self.S))
+        attention_mask = np.broadcast_to(attn_mask, (self.N, self.num_heads, self.L, self.S))
         
         # Combine masks
-        combined_mask = NotImplementedError
+        combined_mask = key_mask | attention_mask
         
-        raise NotImplementedError
+        return combined_mask
 
     def _split_heads(self, x):
         """
         Reshape tensor for multi-head attention.
         """
         # Reshape and transpose for heads
-        x = NotImplementedError
-        x = NotImplementedError
+        x = x.reshape((self.N, self.L, self.E // self.num_heads, self.num_heads))
+        x = np.transpose(x, (0, 3, 1, 2))
         
-        raise NotImplementedError
+        return x
 
     def _concat_heads(self, x):
         """
@@ -137,7 +137,7 @@ class MultiHeadAttention:
         :return: (N, L, embed_dim)
         """
         # Transpose and reshape
-        x = NotImplementedError
-        x = NotImplementedError
+        x = np.transpose(x, (0, 2, 3, 1))
+        x = x.reshape((self.N, self.L, self.E))
         
-        raise NotImplementedError
+        return x

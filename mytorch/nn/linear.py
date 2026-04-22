@@ -28,7 +28,7 @@ class Linear:
         Handles arbitrary batch dimensions like PyTorch
         """
         # Implement forward pass [self.A @ self.W.T: (*, out_features)]
-        Z = self.A @ self.W.T + self.b.T
+        Z = A @ self.W.T + self.b.T
         # Store input for backward pass
         self.A = A
         
