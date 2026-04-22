@@ -103,8 +103,10 @@ class ASRTrainer(BaseTrainer):
         for i, batch in enumerate(dataloader):
             # Unpack batch and move to device
             feats, targets_shifted, targets_golden, feat_lengths, transcript_lengths = batch
+            
             feats = feats.to(self.device)
             targets_shifted = targets_shifted.to(self.device)
+            targets_golden = targets_golden.to(self.device)
             feat_lengths = feat_lengths.to(self.device)
             transcript_lengths = transcript_lengths.to(self.device)
 
@@ -116,7 +118,7 @@ class ASRTrainer(BaseTrainer):
                 running_att = curr_att
                 
                 # Calculate CE loss 
-                ce_loss = self.ce_criterion(seq_out.permute(0,2,1), targets_shifted)
+                ce_loss = self.ce_criterion(seq_out.permute(0,2,1), targets_golden)
                 
                 # Calculate CTC loss if needed
                 if self.ctc_weight > 0:

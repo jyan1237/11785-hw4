@@ -50,11 +50,11 @@ class LMTrainer(BaseTrainer):
     def __init__(self, model, tokenizer, config, run_name, config_file, device=None):
         super().__init__(model, tokenizer, config, run_name, config_file, device)
         # TODO: Implement the __init__ method
-        # TODO: Initialize the criterion
+        # Initialize the criterion
         # How would you set the ignore_index? 
         # Use value in config to set the label_smoothing argument
-        self.criterion = NotImplementedError
-        raise NotImplementedError # Remove once implemented
+        self.criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_id, label_smoothing=config['loss']['label_smoothing'])
+        
 
     def _train_epoch(self, dataloader) -> Tuple[Dict[str, float], Dict[str, torch.Tensor]]:
         """
@@ -67,7 +67,6 @@ class LMTrainer(BaseTrainer):
         """
 
         # TODO: In-fill the _train_epoch method
-        raise NotImplementedError # Remove once implemented
         
         # Initialize training variables
         self.model.train()
@@ -79,10 +78,13 @@ class LMTrainer(BaseTrainer):
         self.optimizer.zero_grad()
 
         for i, batch in enumerate(dataloader):
-            # TODO: Unpack batch from the dataloader
-            # TODO: Move the batch elements to self.device
+            # Unpack batch from the dataloader
+            # Move the batch elements to self.device
             targets_shifted, targets_golden, lengths = batch
-        
+
+            targets_shifted = targets_shifted.to(self.device)
+            targets_golden = targets_golden.to(self.device)
+            lengths = lengths.to(self.device)
 
             with torch.autocast(device_type=self.device, dtype=torch.float16):
 
