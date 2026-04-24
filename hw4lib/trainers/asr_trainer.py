@@ -54,7 +54,7 @@ class ASRTrainer(BaseTrainer):
         - Run inference
         - Handle both greedy and optionally beam search decoding
     """
-    def __init__(self, model, tokenizer, config, run_name, config_file, device=None, lm_model=None):
+    def __init__(self, model, tokenizer, config, run_name, config_file, device=None, val_recog_config=None):
         super().__init__(model, tokenizer, config, run_name, config_file, device)
 
         # Implement the __init__ method
@@ -75,7 +75,7 @@ class ASRTrainer(BaseTrainer):
             )
 
         self.scaler = torch.cuda.amp.GradScaler()
-        self.lmmodel = lm_model
+        self.val_recog_config = val_recog_config
 
     def _train_epoch(self, dataloader):
         """
@@ -204,17 +204,7 @@ class ASRTrainer(BaseTrainer):
             Tuple[Dict[str, float], List[Dict[str, Any]]]: Validation metrics and recognition results
         """
         # TODO: In-fill the _validate_epoch method
-
-        recog_config = {
-            'num_batches': None,
-            'beam_width': 5,
-            'temperature': 1.0,
-            'repeat_penalty': 1.0,
-            'lm_weight': 0.0,
-            'lm_model': self.lm_model
-        }
-        config_name = "Beam5"
-        recog_results = self.recognize(dataloader, recog_config, config_name)
+        recog_results = self.recognize(dataloader, self.val_recog_config, self.val_recog_config['config_name'])
         
         # Extract all generated sequences and targets into lists
         all_hypotheses = [r['generated'] for r in recog_results]
@@ -691,9 +681,12 @@ class ProgressiveTrainer(ASRTrainer):
     - `data_subset` should be between 0 and 1
     - Stage transitions are handled automatically by the trainer
     - The same optimizer and scheduler are used for all stages so keep that in mind while setting the learning rates and other parameters
+
+    ##### Modifications 
+    - Now 2 decoder freeze boolean lists. First list is for freezing lm components self and ffn. Second list is for freezing cross
     """
-    def __init__(self, model, tokenizer, config, run_name, config_file, device=None, lm_model=None):
-        super().__init__(model, tokenizer, config, run_name, config_file, device, lm_model)
+    def __init__(self, model, tokenizer, config, run_name, config_file, device=None, val_recog_config=None):
+        super().__init__(model, tokenizer, config, run_name, config_file, device, val_recog_config)
         self.current_stage = 0
         # Store original layer states
         self.all_encoder_layers = list(self.model.enc_layers)
@@ -723,7 +716,8 @@ class ProgressiveTrainer(ASRTrainer):
         
         # Get freeze configurations
         encoder_freeze = stage_config.get('encoder_freeze', [])
-        decoder_freeze = stage_config.get('decoder_freeze', [])
+        decoder_freeze_lm = stage_config.get('decoder_freeze_lm', [])
+        decoder_freeze_cross = stage_config.get('decoder_freeze_cross', [])
         
         # Activate and configure encoder layers
         encoder_active_layers = stage_config['encoder_active_layers']
@@ -738,8 +732,11 @@ class ProgressiveTrainer(ASRTrainer):
         
         # Activate and configure decoder layers
         decoder_active_layers = stage_config['decoder_active_layers']
-        if decoder_freeze and len(decoder_freeze) != len(decoder_active_layers):
-            raise ValueError(f"Decoder freeze list length ({len(decoder_freeze)}) must match number of active decoder layers ({len(decoder_active_layers)})")
+        if decoder_freeze_lm and len(decoder_freeze_lm) != len(decoder_active_layers):
+            raise ValueError(f"Decoder freeze LM list length ({len(decoder_freeze_lm)}) must match number of active decoder layers ({len(decoder_active_layers)})")
+        
+        if decoder_freeze_cross and len(decoder_freeze_cross) != len(decoder_active_layers):
+            raise ValueError(f"Decoder freeze Cross list length ({len(decoder_freeze_cross)}) must match number of active decoder layers ({len(decoder_active_layers)})")
         
         # Set the active decoder layers of the model
         self.model.dec_layers = nn.ModuleList([
@@ -763,17 +760,33 @@ class ProgressiveTrainer(ASRTrainer):
                     trainable_count += param.numel()
             print(f"│   ├── Layer {encoder_active_layers[idx]}: {'Frozen' if should_freeze else 'Trainable'}")
         
-        # Configure decoder layers
+        # Configure decoder layers 
         print("├── Decoder Layers:")
         for idx, layer in enumerate(self.model.dec_layers):
-            should_freeze = decoder_freeze[idx]
-            for param in layer.parameters():
-                param.requires_grad = not should_freeze
-                if should_freeze:
+            should_freeze_self_ffn = decoder_freeze_lm[idx]
+            should_freeze_cross = decoder_freeze_cross[idx]
+            
+            for param in layer.self_attn.parameters():
+                param.requires_grad = not should_freeze_self_ffn
+                if should_freeze_self_ffn:
                     frozen_count += param.numel()
                 else:
                     trainable_count += param.numel()
-            print(f"│   ├── Layer {decoder_active_layers[idx]}: {'Frozen' if should_freeze else 'Trainable'}")
+            for param in layer.ffn.parameters():
+                param.requires_grad = not should_freeze_self_ffn
+                if should_freeze_self_ffn:
+                    frozen_count += param.numel()
+                else:
+                    trainable_count += param.numel()
+            
+            for param in layer.cross_attn.parameters():
+                param.requires_grad = not should_freeze_cross
+                if should_freeze_cross:
+                    frozen_count += param.numel()
+                else:
+                    trainable_count += param.numel()
+            
+            print(f"│   ├── Layer {decoder_active_layers[idx]}: {'Frozen' if should_freeze_cross else 'Trainable'}")
         
         print(f"├── Frozen Parameters: {frozen_count:,}")
         print(f"└── Trainable Parameters: {trainable_count:,}")
